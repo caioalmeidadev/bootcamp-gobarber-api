@@ -1,8 +1,11 @@
 import * as Yup from 'yup';
-import { startOfHour, parseISO, isBefore } from 'date-fns';
+import { startOfHour, parseISO, isBefore, format, subHours } from 'date-fns';
+import pt from 'date-fns/locale/pt';
 import Apointment from '../models/Apointment';
 import User from '../models/User';
 import File from '../models/File';
+import Notification from '../Schemas/Notification';
+import Mail from '../../lib/Mail';
 
 class ApointmentController {
   async index(req, res) {
@@ -42,6 +45,15 @@ class ApointmentController {
       return res.status(400).json({ error: 'Validation fails' });
     }
     const { provider_id, date } = req.body;
+    /**
+     * Chekc if user is provider
+     */
+
+    if (req.userId === provider_id) {
+      return res
+        .status(400)
+        .json({ error: 'Provider can not create appointment to him self' });
+    }
 
     /**
      * Check if provider exits and if is a provider
@@ -86,6 +98,57 @@ class ApointmentController {
       date: hourStart,
     });
 
+    /**
+     * Notify apointment Provider
+     */
+
+    const user = await User.findByPk(req.userId);
+    const formattedDate = format(
+      hourStart,
+      "'dia' dd 'de' MMMM', às' H:mm'h'",
+      { locale: pt }
+    );
+
+    await Notification.create({
+      content: `Novo agendamento de ${user.name} para o ${formattedDate}`,
+      user: provider_id,
+    });
+    return res.json(apointment);
+  }
+
+  async delete(req, res) {
+    const apointment = await Apointment.findByPk(req.params.id, {
+      include: [
+        {
+          model: User,
+          as: 'provider',
+          attributes: ['name', 'email'],
+        },
+      ],
+    });
+
+    if (apointment.user_id !== req.userId) {
+      return res
+        .status(401)
+        .json({ error: "You don't have permission to cancel this apointment" });
+    }
+
+    const dateWithSub = subHours(apointment.date, 2);
+
+    if (isBefore(dateWithSub, new Date())) {
+      return res.status(401).json({
+        error: 'You can only cancel apointment in 2 hours in advance',
+      });
+    }
+
+    apointment.cancelled_at = new Date();
+
+    await apointment.save();
+    await Mail.sendMail({
+      to: `${apointment.provider.name} <${apointment.provider.email}>`,
+      subject: 'Agendamento Cancelado',
+      text: 'Você tem um novo cancelamento.',
+    });
     return res.json(apointment);
   }
 }
