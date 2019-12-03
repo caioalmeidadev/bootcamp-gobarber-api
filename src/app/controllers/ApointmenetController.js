@@ -5,7 +5,8 @@ import Apointment from '../models/Apointment';
 import User from '../models/User';
 import File from '../models/File';
 import Notification from '../Schemas/Notification';
-import Mail from '../../lib/Mail';
+import Queue from '../../lib/Queue';
+import CancellationMail from '../Jobs/CancellationMail';
 
 class ApointmentController {
   async index(req, res) {
@@ -28,7 +29,7 @@ class ApointmentController {
           },
         },
       ],
-      attributes: ['id', 'date'],
+      attributes: ['id', 'date', 'past', 'cancelable'],
       limit: 20,
       offset: (page - 1) * 20,
     });
@@ -124,6 +125,11 @@ class ApointmentController {
           as: 'provider',
           attributes: ['name', 'email'],
         },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['name'],
+        },
       ],
     });
 
@@ -144,11 +150,9 @@ class ApointmentController {
     apointment.cancelled_at = new Date();
 
     await apointment.save();
-    await Mail.sendMail({
-      to: `${apointment.provider.name} <${apointment.provider.email}>`,
-      subject: 'Agendamento Cancelado',
-      text: 'Você tem um novo cancelamento.',
-    });
+
+    await Queue.add(CancellationMail.key, { apointment });
+
     return res.json(apointment);
   }
 }
