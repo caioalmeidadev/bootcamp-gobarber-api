@@ -24,7 +24,7 @@ class AvailableController {
         provider_id: req.params.providerId,
         cancelled_at: null,
         date: {
-          [Op.beetwen]: [startOfDay(searchDate), endOfDay(searchDate)],
+          [Op.between]: [startOfDay(searchDate), endOfDay(searchDate)],
         },
       },
     });
@@ -48,7 +48,6 @@ class AvailableController {
       // eslint-disable-next-line no-unused-vars
       const [hour, minute] = time.split(':');
       const value = setSeconds(setMinutes(setHours(searchDate, hour), 0), 0);
-
       return {
         time,
         value: format(value, "yyyy-MM-dd'T'HH:mm:ssxxx"),
